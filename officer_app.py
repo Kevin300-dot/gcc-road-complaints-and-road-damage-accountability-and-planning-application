@@ -8,7 +8,7 @@ import streamlit as st
 API_URL = os.environ.get("GCC_API_URL", "http://localhost:8000")
 
 st.set_page_config(
-    page_title="Officer Dashboard",
+    page_title="GCC Officer Dashboard",
     page_icon="🛠️",
     layout="wide",
 )
@@ -18,7 +18,19 @@ st.markdown(
     <style>
 html, body, [class*="css"] { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
 .stApp { background: #f4f7f6; }
-.main .block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1440px; }
+.main .block-container { padding-top: 0; padding-bottom: 3rem; max-width: 1440px; }
+.gcc-ribbon {
+    background: #20322f; margin: -1rem -1rem 0 -1rem; padding: 10px 26px;
+    display: flex; align-items: center; gap: 10px;
+}
+.gcc-ribbon span {
+    color: #e7efec; font-weight: 600; font-size: 0.82rem; letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.gcc-header {
+    background: #ffffff; border-bottom: 1px solid #d8e2df;
+    margin: 0 -1rem 1.8rem -1rem; padding: 1.4rem 1.5rem 1.2rem 1.5rem;
+}
 h1, h2, h3, h4 { color: #20322f; font-weight: 650; letter-spacing: -0.01em; }
 h2 { font-size: 1.75rem; }
 h3, h4 { color: #314b46; }
@@ -47,10 +59,19 @@ hr { border-color: #d8e2df; }
 }
 [data-testid="stAlert"] { border-radius: 8px; }
 .stCaption { color: #657570; }
+.gcc-footer { text-align: center; color: #8a9994; font-size: 0.8rem; margin-top: 2.5rem; }
 </style>
+<div class="gcc-ribbon"><span>GCC &middot; Government Road Maintenance Portal</span></div>
     """,
     unsafe_allow_html=True,
 )
+
+
+def render_footer():
+    st.markdown(
+        "<div class='gcc-footer'>Prototype developed by Kevin, Keerthi and Lakshikanth</div>",
+        unsafe_allow_html=True,
+    )
 
 ESCALATION_TARGETS = [
     "Zonal Office",
@@ -79,14 +100,15 @@ def check_password():
     if st.session_state.get("officer_authenticated"):
         return True
 
-    st.markdown("## Officer Portal")
+    st.markdown("## GCC Officer Portal")
     st.caption("Authorized personnel only")
     with st.form("officer_login"):
         password = st.text_input("Officer Password", type="password")
         submitted = st.form_submit_button("Log In")
         if submitted:
             try:
-                r = requests.get(f"{API_URL}/officer/login", params={"password": password}, timeout=5)
+                with st.spinner("Connecting to server — this can take up to a minute if it has been idle..."):
+                    r = requests.get(f"{API_URL}/officer/login", params={"password": password}, timeout=60)
                 if r.json().get("authenticated"):
                     st.session_state["officer_authenticated"] = True
                     st.rerun()
@@ -94,6 +116,7 @@ def check_password():
                     st.error("Incorrect password.")
             except Exception as e:
                 st.error(f"Could not reach the server. ({e})")
+    render_footer()
     return False
 
 
@@ -107,7 +130,7 @@ PRIORITY_RGB = {
 
 def render_map():
     try:
-        r = requests.get(f"{API_URL}/officer/map-zones", timeout=20)
+        r = requests.get(f"{API_URL}/officer/map-zones", timeout=40)
         zones = r.json()["zones"]
     except Exception as e:
         st.error(f"Could not load map data. ({e})")
@@ -151,13 +174,13 @@ def render_map():
 
 def render_accountability():
     try:
-        r = requests.get(f"{API_URL}/officer/accountability", timeout=20)
+        r = requests.get(f"{API_URL}/officer/accountability", timeout=40)
         data = r.json()
     except Exception as e:
         st.error(f"Could not load accountability data. ({e})")
         return
 
-    st.markdown("#### Department Accountability")
+    st.markdown("#### Departmental Accountability")
     dept_df = pd.DataFrame(data["by_department"])
     if dept_df.empty:
         st.caption("No completed intervention records available.")
@@ -244,7 +267,7 @@ def render_cluster_card(cluster):
                     r = requests.get(
                         f"{API_URL}/officer/cluster-detail",
                         params={"cluster_id": cluster["cluster_id"]},
-                        timeout=20,
+                        timeout=40,
                     )
                     st.session_state[cache_key] = r.json()
                     st.rerun()
@@ -286,7 +309,7 @@ def render_cluster_card(cluster):
                                         "complaint_id": complaints_df.iloc[i]["complaint_id"],
                                         "status": new_status,
                                     },
-                                    timeout=20,
+                                    timeout=40,
                                 )
                                 changes += 1
                         if changes:
@@ -326,7 +349,7 @@ def render_cluster_card(cluster):
                                         "event_id": related_df.iloc[i]["event_id"],
                                         "restoration_completed": new_val,
                                     },
-                                    timeout=20,
+                                    timeout=40,
                                 )
                                 changes += 1
                         if changes:
@@ -355,7 +378,7 @@ def render_cluster_card(cluster):
                                 "officer_name": officer_name,
                                 "note": note,
                             },
-                            timeout=20,
+                            timeout=40,
                         )
                         st.success(f"Marked as escalated to {target}.")
                         st.rerun()
@@ -365,12 +388,15 @@ def main():
     if not check_password():
         return
 
-    st.markdown("## Officer Dashboard")
-    st.caption("Road Infrastructure Complaint Management")
+    st.markdown(
+        "<div class='gcc-header'><h2 style='margin-bottom:0.15rem;'>GCC Officer Dashboard</h2>"
+        "<p style='color:#60716d;margin:0;'>Road Infrastructure Complaint Management</p></div>",
+        unsafe_allow_html=True,
+    )
 
     try:
-        summary = requests.get(f"{API_URL}/officer/summary", timeout=20).json()
-        clusters_response = requests.get(f"{API_URL}/officer/clusters", timeout=20).json()
+        summary = requests.get(f"{API_URL}/officer/summary", timeout=40).json()
+        clusters_response = requests.get(f"{API_URL}/officer/clusters", timeout=40).json()
     except Exception as e:
         st.error(f"Could not reach the server. ({e})")
         return
@@ -391,7 +417,7 @@ def main():
         render_map()
 
     with tab_list:
-        st.markdown("#### Consolidated Problem List")
+        st.markdown("#### Complaint Registry")
         st.caption("Repeated complaints about the same issue and location are grouped together.")
 
         locations = sorted(set(c["zone_label"] for c in clusters))
@@ -433,6 +459,8 @@ def main():
 
     with tab_accountability:
         render_accountability()
+
+    render_footer()
 
 
 if __name__ == "__main__":

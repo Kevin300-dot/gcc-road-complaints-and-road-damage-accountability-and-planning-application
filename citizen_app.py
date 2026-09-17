@@ -7,7 +7,7 @@ import streamlit as st
 API_URL = os.environ.get("GCC_API_URL", "http://localhost:8000")
 
 st.set_page_config(
-    page_title="Road Complaint Portal",
+    page_title="GCC Citizen Portal",
     page_icon="🛣️",
     layout="centered",
 )
@@ -17,10 +17,22 @@ st.markdown(
     <style>
 html, body, [class*="css"] { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
 .stApp { background: #f4f7f6; }
-.main .block-container { max-width: 980px; padding-top: 2.5rem; padding-bottom: 3rem; }
+.main .block-container { max-width: 980px; padding-top: 0; padding-bottom: 3rem; }
+.gcc-ribbon {
+    background: #20322f; margin: -1rem -1rem 0 -1rem; padding: 10px 26px;
+    display: flex; align-items: center; gap: 10px;
+}
+.gcc-ribbon span {
+    color: #e7efec; font-weight: 600; font-size: 0.82rem; letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.gcc-header {
+    background: #ffffff; border-bottom: 1px solid #d8e2df;
+    margin: 0 -1rem 2rem -1rem; padding: 1.6rem 1rem 1.4rem 1rem; text-align: center;
+}
 h1, h2, h3, h4 { color: #20322f; font-weight: 650; letter-spacing: -0.01em; }
-h1 { font-size: 2.15rem; }
-h3 { color: #60716d !important; font-weight: 500; }
+h1 { font-size: 2.05rem; margin-bottom: 0.15rem !important; }
+h3 { color: #60716d !important; font-weight: 500; font-size: 1.1rem; }
 .stButton>button, .stFormSubmitButton>button {
     background: #496b63; color: #ffffff; border: 1px solid #496b63;
     border-radius: 7px; min-height: 2.55rem; font-weight: 600;
@@ -44,10 +56,19 @@ hr { border-color: #d8e2df; }
 [data-testid="stAlert"] { border-radius: 8px; }
 .stCaption { color: #657570; }
 [data-testid="stMap"] { border: 1px solid #d8e2df; border-radius: 10px; overflow: hidden; }
+.gcc-footer { text-align: center; color: #8a9994; font-size: 0.8rem; margin-top: 2.5rem; }
 </style>
+<div class="gcc-ribbon"><span>GCC &middot; Government Road Maintenance Portal</span></div>
     """,
     unsafe_allow_html=True,
 )
+
+
+def render_footer():
+    st.markdown(
+        "<div class='gcc-footer'>Prototype developed by Kevin, Keerthi and Lakshikanth</div>",
+        unsafe_allow_html=True,
+    )
 
 DAMAGE_TYPE_LABELS_FALLBACK = [
     "Pothole", "Cracked road surface (alligator cracking)", "Crack in road surface",
@@ -59,7 +80,7 @@ DAMAGE_TYPE_LABELS_FALLBACK = [
 
 def get_locations():
     try:
-        r = requests.get(f"{API_URL}/locations", timeout=5)
+        r = requests.get(f"{API_URL}/locations", timeout=30)
         return r.json()["locations"]
     except Exception:
         return []
@@ -67,7 +88,7 @@ def get_locations():
 
 def get_damage_type_labels():
     try:
-        r = requests.get(f"{API_URL}/damage-types", timeout=5)
+        r = requests.get(f"{API_URL}/damage-types", timeout=30)
         return list(r.json()["damage_types"].values())
     except Exception:
         return DAMAGE_TYPE_LABELS_FALLBACK
@@ -78,7 +99,7 @@ def get_predicted_resolution(location_description, damage_type_label):
         r = requests.get(
             f"{API_URL}/predicted-resolution",
             params={"location_description": location_description, "damage_type_label": damage_type_label},
-            timeout=5,
+            timeout=30,
         )
         return r.json().get("predicted_days")
     except Exception:
@@ -86,11 +107,12 @@ def get_predicted_resolution(location_description, damage_type_label):
 
 
 st.markdown(
-    "<h1 style='text-align:center;margin-bottom:0;'>Municipal Road Services</h1>"
-    "<h3 style='text-align:center;color:#64748b;margin-top:4px;'>Road Complaint Portal</h3>",
+    "<div class='gcc-header'>"
+    "<h1>GCC Citizen Portal</h1>"
+    "<h3>Public Grievance &amp; Road Complaint System</h3>"
+    "</div>",
     unsafe_allow_html=True,
 )
-st.write("")
 
 if "citizen_submitted_id" in st.session_state:
     st.success(
@@ -101,6 +123,7 @@ if "citizen_submitted_id" in st.session_state:
     if st.button("Submit another complaint"):
         del st.session_state["citizen_submitted_id"]
         st.rerun()
+    render_footer()
     st.stop()
 
 st.write(
@@ -113,7 +136,7 @@ damage_type_labels = get_damage_type_labels()
 
 def get_location_coordinates(area):
     try:
-        r = requests.get(f"{API_URL}/location-coordinates", params={"area": area}, timeout=5)
+        r = requests.get(f"{API_URL}/location-coordinates", params={"area": area}, timeout=30)
         data = r.json()
         return data["latitude"], data["longitude"]
     except Exception:
@@ -122,7 +145,7 @@ def get_location_coordinates(area):
 
 def get_sub_locations(area):
     try:
-        r = requests.get(f"{API_URL}/sub-locations", params={"area": area}, timeout=5)
+        r = requests.get(f"{API_URL}/sub-locations", params={"area": area}, timeout=30)
         return r.json().get("sub_locations", {})
     except Exception:
         return {}
@@ -218,9 +241,11 @@ with st.form("complaint_form", clear_on_submit=False):
                 data["longitude"] = chosen_lon
 
             try:
-                r = requests.post(f"{API_URL}/complaints", data=data, files=files, timeout=15)
+                r = requests.post(f"{API_URL}/complaints", data=data, files=files, timeout=45)
                 r.raise_for_status()
                 st.session_state["citizen_submitted_id"] = r.json()["complaint_id"]
                 st.rerun()
             except Exception as e:
                 st.error(f"Could not submit your complaint. Please try again. ({e})")
+
+render_footer()
