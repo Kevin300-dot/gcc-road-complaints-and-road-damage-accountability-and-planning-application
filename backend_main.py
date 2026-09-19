@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import data_layer
 import analytics
 import clustering
+import risk_model
 
 
 def _clean_value(v):
@@ -25,7 +26,7 @@ def _clean_nans(records: list) -> list:
 
 import os
 
-_computed_cache = {"key": None, "clusters": None, "accountability": None}
+_computed_cache = {"key": None, "clusters": None, "accountability": None, "risk_model": None}
 
 
 def _cache_key():
@@ -41,16 +42,28 @@ def _get_clusters(complaints_df):
     clusters = clustering.build_clusters(complaints_df, data_layer.ZONE_LOOKUP, data_layer.ZONE_INFO)
     if _computed_cache["key"] != key:
         _computed_cache["accountability"] = None
+        _computed_cache["risk_model"] = None
     _computed_cache["key"] = key
     _computed_cache["clusters"] = clusters
     return clusters
+
+
+def _get_risk_model(complaints_df, events_df):
+    key = _cache_key()
+    if _computed_cache["key"] == key and _computed_cache["risk_model"] is not None:
+        return _computed_cache["risk_model"]
+    model = risk_model.train_risk_model(complaints_df, events_df)
+    _computed_cache["key"] = key
+    _computed_cache["risk_model"] = model
+    return model
 
 
 def _get_accountability(complaints_df, events_df):
     key = _cache_key()
     if _computed_cache["key"] == key and _computed_cache["accountability"] is not None:
         return _computed_cache["accountability"]
-    result = analytics.compute_accountability(complaints_df, events_df)
+    model = _get_risk_model(complaints_df, events_df)
+    result = analytics.compute_accountability(complaints_df, events_df, risk_model=model)
     _computed_cache["key"] = key
     _computed_cache["accountability"] = result
     return result
@@ -73,6 +86,7 @@ def warm_up_cache():
         complaints_df = data_layer.load_complaints()
         events_df = data_layer.load_events()
         _get_clusters(complaints_df)
+        _get_risk_model(complaints_df, events_df)
         _get_accountability(complaints_df, events_df)
         print("Startup warm-up complete: data loaded and cached.")
     except Exception as e:
@@ -159,6 +173,14 @@ async def create_complaint(
     return {"complaint_id": complaint_id}
 
 
+@app.get("/complaint-status")
+def complaint_status(complaint_id: str):
+    result = data_layer.get_complaint_status(complaint_id.strip())
+    if result is None:
+        raise HTTPException(status_code=404, detail="No complaint found with that reference number")
+    return result
+
+
 @app.get("/officer/login")
 def officer_login(password: str):
     return {"authenticated": password == OFFICER_PASSWORD}
@@ -242,14 +264,37 @@ def officer_map_zones():
     return {"zones": _clean_nans(zones.to_dict(orient="records"))}
 
 
+@app.get("/officer/repair-risk-options")
+def repair_risk_options():
+    events_df = data_layer.load_events()
+    if events_df.empty:
+        return {"departments": [], "contractors": [], "event_types": []}
+    return {
+        "departments": sorted(events_df["department"].dropna().unique().tolist()),
+        "contractors": sorted(events_df["contractor"].dropna().unique().tolist()),
+        "event_types": sorted(events_df["event_type"].dropna().unique().tolist()),
+    }
+
+
+@app.get("/officer/predict-repair-risk")
+def predict_repair_risk(department: str, contractor: str, event_type: str, road_cutting: str, month: int):
+    complaints_df = data_layer.load_complaints()
+    events_df = data_layer.load_events()
+    model = _get_risk_model(complaints_df, events_df)
+    if model is None:
+        return {"predicted_failure_risk": None, "note": "Not enough historical data to train a model yet."}
+    risk = risk_model.predict_risk(model, department, contractor, event_type, road_cutting, month)
+    return {"predicted_failure_risk": risk}
+
+
 @app.get("/officer/accountability")
 def officer_accountability():
     complaints_df = data_layer.load_complaints()
     events_df = data_layer.load_events()
     result = _get_accountability(complaints_df, events_df)
     return {
-        "by_department": result["by_department"].to_dict(orient="records"),
-        "by_contractor": result["by_contractor"].to_dict(orient="records"),
+        "by_department": _clean_nans(result["by_department"].to_dict(orient="records")),
+        "by_contractor": _clean_nans(result["by_contractor"].to_dict(orient="records")),
     }
 
 

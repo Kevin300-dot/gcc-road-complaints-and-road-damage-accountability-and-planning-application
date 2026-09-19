@@ -309,6 +309,24 @@ def submit_complaint(
     return complaint_id
 
 
+def get_complaint_status(complaint_id: str):
+    df = load_complaints()
+    match = df[df["complaint_id"] == complaint_id]
+    if match.empty:
+        return None
+    row = match.iloc[0]
+    return {
+        "complaint_id": row["complaint_id"],
+        "location_description": row["location_description"],
+        "damage_type": row["damage_type"],
+        "damage_type_label": DAMAGE_TYPE_LABELS.get(row["damage_type"], row["damage_type"]),
+        "complaint_date": row["complaint_date"],
+        "status": row["status"],
+        "resolution_date": row["resolution_date"] if str(row["resolution_date"]).strip() else None,
+        "resolution_type": row["resolution_type"] if str(row["resolution_type"]).strip() else None,
+    }
+
+
 def update_complaint_status(complaint_id: str, new_status: str, resolution_type: str = None):
     _ensure_dirs()
     df = pd.read_csv(COMPLAINTS_PATH)

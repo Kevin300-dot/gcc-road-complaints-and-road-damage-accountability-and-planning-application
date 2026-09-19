@@ -1,6 +1,8 @@
 import re
 
+import numpy as np
 import pandas as pd
+from sklearn.cluster import KMeans
 
 from data_layer import DAMAGE_TYPE_LABELS
 from analytics import compute_urgency_velocity
@@ -8,6 +10,8 @@ from analytics import compute_urgency_velocity
 SEVERITY_RANK = {"Low": 1, "Medium": 2, "High": 3, "Critical": 4}
 TRAFFIC_RANK = {"Low": 1, "Medium": 2, "High": 3, "Severe": 4}
 SAFETY_RANK = {"Low": 1, "Medium": 2, "High": 3, "Critical": 4}
+
+TIER_LABELS = ["Low", "Medium", "High", "Critical"]
 
 
 def make_cluster_id(location: str, damage_type: str) -> str:
@@ -37,7 +41,9 @@ def _priority_score(row) -> float:
     return round(score, 1)
 
 
-def _priority_label(score: float) -> str:
+def _fixed_priority_label(score: float) -> str:
+    """Fallback thresholds, used only when there isn't enough data to
+    cluster meaningfully (fewer than 4 problem locations)."""
     if score >= 95:
         return "Critical"
     if score >= 65:
@@ -45,6 +51,30 @@ def _priority_label(score: float) -> str:
     if score >= 38:
         return "Medium"
     return "Low"
+
+
+def assign_priority_tiers(scores: pd.Series) -> pd.Series:
+    """
+    Assigns Low/Medium/High/Critical tiers using k-means clustering on the
+    actual distribution of priority scores in the current dataset, instead
+    of fixed hardcoded thresholds. Cluster centers are sorted ascending and
+    mapped to the four tier labels in order, so "Critical" always means
+    "the highest-scoring cluster right now", adapting to whatever the data
+    actually looks like. Falls back to fixed thresholds when there are too
+    few distinct problem locations to cluster meaningfully.
+    """
+    if len(scores) < 4 or scores.nunique() < 4:
+        return scores.apply(_fixed_priority_label)
+
+    X = scores.to_numpy().reshape(-1, 1)
+    km = KMeans(n_clusters=4, n_init=10, random_state=42)
+    cluster_ids = km.fit_predict(X)
+
+    centers = km.cluster_centers_.flatten()
+    order = np.argsort(centers)  # ascending: lowest-scoring cluster first
+    label_by_cluster = {cluster_idx: TIER_LABELS[rank] for rank, cluster_idx in enumerate(order)}
+
+    return pd.Series([label_by_cluster[c] for c in cluster_ids], index=scores.index)
 
 
 def _pick_representative_photo(group: pd.DataFrame):
@@ -122,12 +152,12 @@ def build_clusters(complaints_df: pd.DataFrame, zone_lookup: dict, zone_info: di
             "reports_last_30_days": velocity["reports_last_30_days"],
         }
         record["priority_score"] = _priority_score(record)
-        record["priority"] = _priority_label(record["priority_score"])
         record["representative_photo"] = _pick_representative_photo(group)
         records.append(record)
 
     clusters = pd.DataFrame(records)
     if not clusters.empty:
+        clusters["priority"] = assign_priority_tiers(clusters["priority_score"])
         clusters = clusters.sort_values(
             ["priority_score", "complaint_count"], ascending=[False, False]
         ).reset_index(drop=True)

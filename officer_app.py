@@ -180,31 +180,30 @@ def render_accountability():
         st.error(f"Could not load accountability data. ({e})")
         return
 
+    rename_map = {
+        "name": "Name",
+        "completed_jobs": "Completed Jobs",
+        "durable_jobs": "Durable Jobs",
+        "durability_rate": "Durability Rate (%)",
+        "status": "Status",
+        "predicted_failure_risk": "Risk Predictor (%)",
+    }
+
     st.markdown("#### Departmental Accountability")
     dept_df = pd.DataFrame(data["by_department"])
     if dept_df.empty:
         st.caption("No completed intervention records available.")
     else:
-        dept_df = dept_df.rename(columns={
-            "name": "Department",
-            "completed_interventions": "Completed Work Orders",
-            "repeat_failures": "Repeat Failures",
-            "repeat_failure_rate": "Repeat Failure Rate (%)",
-        })
-        st.dataframe(dept_df, use_container_width=True, hide_index=True)
+        dept_df = dept_df.rename(columns={"name": "Department", **{k: v for k, v in rename_map.items() if k != "name"}})
+        st.dataframe(dept_df, width="stretch", hide_index=True)
 
     st.markdown("#### Contractor Accountability")
     contractor_df = pd.DataFrame(data["by_contractor"])
     if contractor_df.empty:
         st.caption("No completed intervention records available.")
     else:
-        contractor_df = contractor_df.rename(columns={
-            "name": "Contractor",
-            "completed_interventions": "Completed Work Orders",
-            "repeat_failures": "Repeat Failures",
-            "repeat_failure_rate": "Repeat Failure Rate (%)",
-        })
-        st.dataframe(contractor_df, use_container_width=True, hide_index=True)
+        contractor_df = contractor_df.rename(columns={"name": "Contractor", **{k: v for k, v in rename_map.items() if k != "name"}})
+        st.dataframe(contractor_df, width="stretch", hide_index=True)
 
 
 def render_cluster_card(cluster):
@@ -222,7 +221,7 @@ def render_cluster_card(cluster):
         photo_path = cluster.get("representative_photo")
         if photo_path:
             filename = os.path.basename(photo_path)
-            st.image(f"{API_URL}/photo/{filename}", use_container_width=True)
+            st.image(f"{API_URL}/photo/{filename}", width="stretch")
         else:
             st.markdown(
                 "<div style='background:#f1f5f9;border:1px dashed #cbd5e1;"
@@ -287,7 +286,7 @@ def render_cluster_card(cluster):
                 else:
                     edited = st.data_editor(
                         complaints_df,
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True,
                         disabled=[c for c in complaints_df.columns if c != "status"],
                         column_config={
@@ -327,7 +326,7 @@ def render_cluster_card(cluster):
                     related_df = pd.DataFrame(related)
                     edited_related = st.data_editor(
                         related_df,
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True,
                         disabled=[c for c in related_df.columns if c != "restoration_completed"],
                         column_config={
@@ -384,6 +383,65 @@ def render_cluster_card(cluster):
                         st.rerun()
 
 
+def render_risk_predictor():
+    try:
+        r = requests.get(f"{API_URL}/officer/repair-risk-options", timeout=40)
+        options = r.json()
+    except Exception as e:
+        st.error(f"Could not load form options. ({e})")
+        return
+
+    if not options.get("departments"):
+        st.caption("No historical repair data available yet to base predictions on.")
+        return
+
+    st.markdown("#### Predict Repair Failure Risk")
+    st.caption("Estimate the likelihood a planned repair will fail (receive a follow-up complaint) before work begins, based on a model trained on historical outcomes.")
+
+    with st.form("risk_predictor_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            department = st.selectbox("Department", options=options["departments"])
+            event_type = st.selectbox("Work Type", options=options["event_types"])
+        with col2:
+            contractor = st.selectbox("Contractor", options=options["contractors"])
+            road_cutting = st.selectbox("Involves Road Cutting", options=["Yes", "No"])
+        month = st.selectbox("Planned Month", options=list(range(1, 13)), format_func=lambda m: [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        ][m - 1])
+
+        predict = st.form_submit_button("Predict Risk")
+        if predict:
+            try:
+                r = requests.get(
+                    f"{API_URL}/officer/predict-repair-risk",
+                    params={
+                        "department": department,
+                        "contractor": contractor,
+                        "event_type": event_type,
+                        "road_cutting": road_cutting,
+                        "month": month,
+                    },
+                    timeout=40,
+                )
+                result = r.json()
+            except Exception as e:
+                st.error(f"Could not reach the server. ({e})")
+                result = None
+
+            if result:
+                risk = result.get("predicted_failure_risk")
+                if risk is None:
+                    st.info(result.get("note", "Not enough data to generate a prediction."))
+                elif risk >= 30:
+                    st.error(f"Predicted failure risk: **{risk}%** — High risk of a follow-up complaint.")
+                elif risk >= 15:
+                    st.warning(f"Predicted failure risk: **{risk}%** — Moderate risk.")
+                else:
+                    st.success(f"Predicted failure risk: **{risk}%** — Low risk.")
+
+
 def main():
     if not check_password():
         return
@@ -411,7 +469,9 @@ def main():
 
     st.divider()
 
-    tab_map, tab_list, tab_accountability = st.tabs(["Priority Map", "Problem List", "Accountability"])
+    tab_map, tab_list, tab_accountability, tab_predictor = st.tabs(
+        ["Priority Map", "Problem List", "Accountability", "Risk Predictor"]
+    )
 
     with tab_map:
         render_map()
@@ -459,6 +519,9 @@ def main():
 
     with tab_accountability:
         render_accountability()
+
+    with tab_predictor:
+        render_risk_predictor()
 
     render_footer()
 

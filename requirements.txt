@@ -4,3 +4,5 @@ python-multipart
 pandas
 streamlit
 requests
+scikit-learn
+pydeck

@@ -5,13 +5,15 @@ import pandas as pd
 MIN_JOBS_FOR_RATING = 5
 
 
-def compute_accountability(complaints_df: pd.DataFrame, events_df: pd.DataFrame) -> dict:
+def compute_accountability(complaints_df: pd.DataFrame, events_df: pd.DataFrame, risk_model=None) -> dict:
     """Ranks departments and contractors by durability rate: the percentage of their
     completed, restored jobs that never had a single follow-up complaint on that
     road segment, for the entire period on record. No arbitrary time cutoff is used.
     Departments/contractors with fewer than MIN_JOBS_FOR_RATING completed jobs are
-    marked 'Insufficient Data' rather than ranked on too little evidence."""
-    empty = pd.DataFrame(columns=["name", "completed_jobs", "durable_jobs", "durability_rate", "status"])
+    marked 'Insufficient Data' rather than ranked on too little evidence. When a
+    trained risk model is supplied, its predicted failure risk is merged in
+    alongside the empirical rate for comparison."""
+    empty = pd.DataFrame(columns=["name", "completed_jobs", "durable_jobs", "durability_rate", "status", "predicted_failure_risk"])
     if events_df.empty:
         return {"by_department": empty.copy(), "by_contractor": empty.copy()}
 
@@ -55,6 +57,14 @@ def compute_accountability(complaints_df: pd.DataFrame, events_df: pd.DataFrame)
         ).round(1)
         grouped["status"] = grouped.apply(_status, axis=1)
         grouped = grouped.rename(columns={group_col: "name"})
+
+        if risk_model is not None:
+            import risk_model as risk_model_module
+            risk_df = risk_model_module.predicted_risk_by_group(risk_model, events_df, group_col)
+            grouped = grouped.merge(risk_df, on="name", how="left")
+        else:
+            grouped["predicted_failure_risk"] = None
+
         return grouped.sort_values("durability_rate", ascending=False).reset_index(drop=True)
 
     return {

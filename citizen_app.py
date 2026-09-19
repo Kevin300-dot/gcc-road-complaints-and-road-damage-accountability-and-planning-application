@@ -106,6 +106,17 @@ def get_predicted_resolution(location_description, damage_type_label):
         return None
 
 
+def get_complaint_status(complaint_id):
+    try:
+        r = requests.get(f"{API_URL}/complaint-status", params={"complaint_id": complaint_id}, timeout=30)
+        if r.status_code == 404:
+            return "not_found"
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return "error"
+
+
 st.markdown(
     "<div class='gcc-header'>"
     "<h1>GCC Citizen Portal</h1>"
@@ -113,6 +124,37 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
+
+mode = st.radio(
+    "Choose an action",
+    options=["Submit a new complaint", "Check complaint status"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
+
+if mode == "Check complaint status":
+    st.markdown("**Reference Number**")
+    lookup_id = st.text_input("Reference Number", placeholder="e.g. CMP_000123", label_visibility="collapsed")
+    if st.button("Check Status"):
+        if not lookup_id.strip():
+            st.warning("Please enter a reference number.")
+        else:
+            result = get_complaint_status(lookup_id.strip())
+            if result == "not_found":
+                st.error("No complaint found with that reference number. Please check and try again.")
+            elif result == "error":
+                st.error("Could not reach the server. Please try again.")
+            else:
+                st.success(f"Status: **{result['status']}**")
+                st.write(f"**Issue type:** {result['damage_type_label']}")
+                st.write(f"**Area:** {result['location_description']}")
+                st.write(f"**Reported on:** {result['complaint_date']}")
+                if result["status"] == "Resolved":
+                    st.write(f"**Resolved on:** {result['resolution_date'] or 'Not recorded'}")
+                    if result["resolution_type"]:
+                        st.write(f"**Resolution:** {result['resolution_type']}")
+    render_footer()
+    st.stop()
 
 if "citizen_submitted_id" in st.session_state:
     st.success(
