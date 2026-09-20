@@ -78,6 +78,7 @@ DAMAGE_TYPE_LABELS_FALLBACK = [
 ]
 
 
+@st.cache_data(ttl=300)
 def get_locations():
     try:
         r = requests.get(f"{API_URL}/locations", timeout=30)
@@ -86,6 +87,7 @@ def get_locations():
         return []
 
 
+@st.cache_data(ttl=300)
 def get_damage_type_labels():
     try:
         r = requests.get(f"{API_URL}/damage-types", timeout=30)
@@ -94,6 +96,7 @@ def get_damage_type_labels():
         return DAMAGE_TYPE_LABELS_FALLBACK
 
 
+@st.cache_data(ttl=120)
 def get_predicted_resolution(location_description, damage_type_label):
     try:
         r = requests.get(
@@ -176,6 +179,7 @@ st.write(
 location_options = get_locations()
 damage_type_labels = get_damage_type_labels()
 
+@st.cache_data(ttl=300)
 def get_location_coordinates(area):
     try:
         r = requests.get(f"{API_URL}/location-coordinates", params={"area": area}, timeout=30)
@@ -185,6 +189,7 @@ def get_location_coordinates(area):
         return None
 
 
+@st.cache_data(ttl=300)
 def get_sub_locations(area):
     try:
         r = requests.get(f"{API_URL}/sub-locations", params={"area": area}, timeout=30)

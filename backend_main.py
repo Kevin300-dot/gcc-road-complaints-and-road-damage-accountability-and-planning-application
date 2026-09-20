@@ -26,7 +26,7 @@ def _clean_nans(records: list) -> list:
 
 import os
 
-_computed_cache = {"key": None, "clusters": None, "accountability": None, "risk_model": None}
+_computed_cache = {"key": None, "clusters": None, "accountability": None, "risk_model": None, "resolution_lookup": None}
 
 
 def _cache_key():
@@ -56,6 +56,20 @@ def _get_risk_model(complaints_df, events_df):
     _computed_cache["key"] = key
     _computed_cache["risk_model"] = model
     return model
+
+
+def _get_resolution_lookup(complaints_df):
+    key = _cache_key()
+    if _computed_cache["key"] == key and _computed_cache["resolution_lookup"] is not None:
+        return _computed_cache["resolution_lookup"]
+    lookup = analytics.build_resolution_time_lookup(complaints_df)
+    if _computed_cache["key"] != key:
+        _computed_cache["accountability"] = None
+        _computed_cache["risk_model"] = None
+        _computed_cache["clusters"] = None
+    _computed_cache["key"] = key
+    _computed_cache["resolution_lookup"] = lookup
+    return lookup
 
 
 def _get_accountability(complaints_df, events_df):
@@ -88,6 +102,7 @@ def warm_up_cache():
         _get_clusters(complaints_df)
         _get_risk_model(complaints_df, events_df)
         _get_accountability(complaints_df, events_df)
+        _get_resolution_lookup(complaints_df)
         print("Startup warm-up complete: data loaded and cached.")
     except Exception as e:
         print(f"Startup warm-up skipped due to: {e}")
@@ -134,7 +149,7 @@ def get_damage_types():
 @app.get("/predicted-resolution")
 def predicted_resolution(location_description: str, damage_type_label: str):
     df = data_layer.load_complaints()
-    lookup = analytics.build_resolution_time_lookup(df)
+    lookup = _get_resolution_lookup(df)
     damage_type = data_layer.LABEL_TO_DAMAGE_TYPE.get(damage_type_label, "Other")
     days = analytics.predicted_resolution_days(lookup, location_description, damage_type)
     return {"predicted_days": days}
