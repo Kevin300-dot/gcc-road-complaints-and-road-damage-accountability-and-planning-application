@@ -79,39 +79,54 @@ DAMAGE_TYPE_LABELS_FALLBACK = [
 
 
 @st.cache_data(ttl=300)
+def _fetch_locations():
+    r = requests.get(f"{API_URL}/locations", timeout=5)
+    r.raise_for_status()
+    return r.json()["locations"]
+
+
 def get_locations():
     try:
-        r = requests.get(f"{API_URL}/locations", timeout=30)
-        return r.json()["locations"]
+        return _fetch_locations()
     except Exception:
         return []
 
 
 @st.cache_data(ttl=300)
+def _fetch_damage_type_labels():
+    r = requests.get(f"{API_URL}/damage-types", timeout=5)
+    r.raise_for_status()
+    return list(r.json()["damage_types"].values())
+
+
 def get_damage_type_labels():
     try:
-        r = requests.get(f"{API_URL}/damage-types", timeout=30)
-        return list(r.json()["damage_types"].values())
+        return _fetch_damage_type_labels()
     except Exception:
         return DAMAGE_TYPE_LABELS_FALLBACK
 
 
 @st.cache_data(ttl=120)
+def _fetch_predicted_resolution(location_description, damage_type_label):
+    r = requests.get(
+        f"{API_URL}/predicted-resolution",
+        params={"location_description": location_description, "damage_type_label": damage_type_label},
+        timeout=5,
+    )
+    r.raise_for_status()
+    return r.json().get("predicted_days")
+
+
 def get_predicted_resolution(location_description, damage_type_label):
     try:
-        r = requests.get(
-            f"{API_URL}/predicted-resolution",
-            params={"location_description": location_description, "damage_type_label": damage_type_label},
-            timeout=30,
-        )
-        return r.json().get("predicted_days")
+        return _fetch_predicted_resolution(location_description, damage_type_label)
     except Exception:
         return None
 
 
 def get_complaint_status(complaint_id):
     try:
-        r = requests.get(f"{API_URL}/complaint-status", params={"complaint_id": complaint_id}, timeout=30)
+        r = requests.get(f"{API_URL}/complaint-status", params={"complaint_id": complaint_id}, timeout=5)
         if r.status_code == 404:
             return "not_found"
         r.raise_for_status()
@@ -180,20 +195,30 @@ location_options = get_locations()
 damage_type_labels = get_damage_type_labels()
 
 @st.cache_data(ttl=300)
+def _fetch_location_coordinates(area):
+    r = requests.get(f"{API_URL}/location-coordinates", params={"area": area}, timeout=5)
+    r.raise_for_status()
+    data = r.json()
+    return data["latitude"], data["longitude"]
+
+
 def get_location_coordinates(area):
     try:
-        r = requests.get(f"{API_URL}/location-coordinates", params={"area": area}, timeout=30)
-        data = r.json()
-        return data["latitude"], data["longitude"]
+        return _fetch_location_coordinates(area)
     except Exception:
         return None
 
 
 @st.cache_data(ttl=300)
+def _fetch_sub_locations(area):
+    r = requests.get(f"{API_URL}/sub-locations", params={"area": area}, timeout=5)
+    r.raise_for_status()
+    return r.json().get("sub_locations", {})
+
+
 def get_sub_locations(area):
     try:
-        r = requests.get(f"{API_URL}/sub-locations", params={"area": area}, timeout=30)
-        return r.json().get("sub_locations", {})
+        return _fetch_sub_locations(area)
     except Exception:
         return {}
 
