@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 pandas
+numpy
 streamlit
 requests
 scikit-learn
-pydeck

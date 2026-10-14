@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Kandanchavadi Map</name>
+    <description/>
+    <Style id="poly-000000-1200-77-nodesc-normal">
+      <LineStyle>
+        <color>ff000000</color>
+        <width>1.2</width>
+      </LineStyle>
+      <PolyStyle>
+        <color>4d000000</color>
+        <fill>1</fill>
+        <outline>1</outline>
+      </PolyStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <Style id="poly-000000-1200-77-nodesc-highlight">
+      <LineStyle>
+        <color>ff000000</color>
+        <width>1.8</width>
+      </LineStyle>
+      <PolyStyle>
+        <color>4d000000</color>
+        <fill>1</fill>
+        <outline>1</outline>
+      </PolyStyle>
+      <BalloonStyle>
+        <text><![CDATA[<h3>$[name]</h3>]]></text>
+      </BalloonStyle>
+    </Style>
+    <StyleMap id="poly-000000-1200-77-nodesc">
+      <Pair>
+        <key>normal</key>
+        <styleUrl>#poly-000000-1200-77-nodesc-normal</styleUrl>
+      </Pair>
+      <Pair>
+        <key>highlight</key>
+        <styleUrl>#poly-000000-1200-77-nodesc-highlight</styleUrl>
+      </Pair>
+    </StyleMap>
+    <Folder>
+      <name>Untitled layer</name>
+      <Placemark>
+        <name>Kandanchavadi Boundary</name>
+        <styleUrl>#poly-000000-1200-77-nodesc</styleUrl>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <tessellate>1</tessellate>
+              <coordinates>
+                80.2440854,12.9637627,0
+                80.2453299,12.9634804,0
+                80.2454479,12.9635048,0
+                80.2455517,12.9636094,0
+                80.2457627,12.9638951,0
+                80.2458735,12.9639823,0
+                80.2462741,12.9639927,0
+                80.2463599,12.9639857,0
+                80.2464743,12.9635884,0
+                80.2467242,12.9633117,0
+                80.2468762,12.9635494,0
+                80.2479384,12.9633577,0
+                80.2480886,12.9636888,0
+                80.2483217,12.9636549,0
+                80.2486796,12.9649683,0
+                80.2492663,12.9648424,0
+                80.2496643,12.9665054,0
+                80.2489061,12.9666501,0
+                80.2488607,12.9665658,0
+                80.2481651,12.966808,0
+                80.2480345,12.9668289,0
+                80.2473385,12.9651498,0
+                80.2446892,12.9657576,0
+                80.2445887,12.9651257,0
+                80.242636,12.9654045,0
+                80.2425717,12.9653417,0
+                80.2414702,12.9655857,0
+                80.2410052,12.9631461,0
+                80.2437519,12.9624955,0
+                80.2440854,12.9637627,0
+              </coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+  </Document>
+</kml>

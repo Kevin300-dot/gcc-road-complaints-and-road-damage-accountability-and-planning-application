@@ -1,74 +1,25 @@
 import os
+import re
 
-import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
+
+import maplib
+from portal_ui import apply_theme, render_header, render_footer, section_heading, render_resolution_estimate, render_status_result, render_receipt
 
 API_URL = os.environ.get("GCC_API_URL", "http://localhost:8000")
+OTHER_ROAD = "Other road in Kandanchavadi"
 
 st.set_page_config(
-    page_title="GCC Citizen Portal",
+    page_title="GCC | Citizen Complaint Portal — Kandanchavadi",
     page_icon="🛣️",
-    layout="centered",
+    layout="wide",
 )
 
-st.markdown(
-    """
-    <style>
-html, body, [class*="css"] { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
-.stApp { background: #f4f7f6; }
-.main .block-container { max-width: 980px; padding-top: 0; padding-bottom: 3rem; }
-.gcc-ribbon {
-    background: #20322f; margin: -1rem -1rem 0 -1rem; padding: 10px 26px;
-    display: flex; align-items: center; gap: 10px;
-}
-.gcc-ribbon span {
-    color: #e7efec; font-weight: 600; font-size: 0.82rem; letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-.gcc-header {
-    background: #ffffff; border-bottom: 1px solid #d8e2df;
-    margin: 0 -1rem 2rem -1rem; padding: 1.6rem 1rem 1.4rem 1rem; text-align: center;
-}
-h1, h2, h3, h4 { color: #20322f; font-weight: 650; letter-spacing: -0.01em; }
-h1 { font-size: 2.05rem; margin-bottom: 0.15rem !important; }
-h3 { color: #60716d !important; font-weight: 500; font-size: 1.1rem; }
-.stButton>button, .stFormSubmitButton>button {
-    background: #496b63; color: #ffffff; border: 1px solid #496b63;
-    border-radius: 7px; min-height: 2.55rem; font-weight: 600;
-}
-.stButton>button:hover, .stFormSubmitButton>button:hover {
-    background: #3d5b55; border-color: #3d5b55; color: #ffffff;
-}
-[data-testid="stMetricValue"] { color: #20322f; }
-.stTabs [data-baseweb="tab"] { color: #496b63; font-weight: 600; }
-.stTabs [aria-selected="true"] { color: #35554e; }
-hr { border-color: #d8e2df; }
-[data-testid="stForm"] {
-    background: #ffffff; border: 1px solid #d8e2df; border-radius: 12px;
-    padding: 1.6rem; box-shadow: 0 2px 10px rgba(32, 50, 47, 0.045);
-}
-[data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea,
-[data-testid="stSelectbox"] div[data-baseweb="select"] > div { border-radius: 7px; }
-[data-testid="stFileUploader"] section {
-    background: #f8faf9; border: 1px dashed #b9cbc6; border-radius: 9px;
-}
-[data-testid="stAlert"] { border-radius: 8px; }
-.stCaption { color: #657570; }
-[data-testid="stMap"] { border: 1px solid #d8e2df; border-radius: 10px; overflow: hidden; }
-.gcc-footer { text-align: center; color: #8a9994; font-size: 0.8rem; margin-top: 2.5rem; }
-</style>
-<div class="gcc-ribbon"><span>GCC &middot; Government Road Maintenance Portal</span></div>
-    """,
-    unsafe_allow_html=True,
-)
+apply_theme("citizen")
 
 
-def render_footer():
-    st.markdown(
-        "<div class='gcc-footer'>Prototype developed by Kevin, Keerthi and Lakshikanth</div>",
-        unsafe_allow_html=True,
-    )
 
 DAMAGE_TYPE_LABELS_FALLBACK = [
     "Pothole", "Cracked road surface (alligator cracking)", "Crack in road surface",
@@ -107,21 +58,71 @@ def get_damage_type_labels():
 
 
 @st.cache_data(ttl=120)
-def _fetch_predicted_resolution(location_description, damage_type_label):
+def _fetch_predicted_resolution(road, damage_type_label):
     r = requests.get(
         f"{API_URL}/predicted-resolution",
-        params={"location_description": location_description, "damage_type_label": damage_type_label},
+        params={"location_description": road, "damage_type_label": damage_type_label},
         timeout=5,
     )
     r.raise_for_status()
-    return r.json().get("predicted_days")
+    data = r.json()
+    return data.get("predicted_days"), data.get("basis")
 
 
-def get_predicted_resolution(location_description, damage_type_label):
+def get_predicted_resolution(road, damage_type_label):
     try:
-        return _fetch_predicted_resolution(location_description, damage_type_label)
+        return _fetch_predicted_resolution(road, damage_type_label)
+    except Exception:
+        return None, None
+
+
+@st.cache_data(ttl=300)
+def _fetch_location_coordinates(road):
+    r = requests.get(f"{API_URL}/location-coordinates", params={"area": road}, timeout=5)
+    r.raise_for_status()
+    data = r.json()
+    return data["latitude"], data["longitude"]
+
+
+def get_location_coordinates(road):
+    try:
+        return _fetch_location_coordinates(road)
     except Exception:
         return None
+
+
+@st.cache_data(ttl=60)
+def _fetch_public_map():
+    r = requests.get(f"{API_URL}/map-points", timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_public_map():
+    try:
+        return _fetch_public_map()
+    except Exception:
+        return None
+
+
+def check_location(lat, lon):
+    try:
+        r = requests.get(f"{API_URL}/location-check", params={"latitude": lat, "longitude": lon}, timeout=8)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
+def parse_coordinates(text):
+    """Accepts '12.9645, 80.2449' as pasted from Google Maps (or two numbers separated by space/comma)."""
+    nums = re.findall(r"-?\d+(?:\.\d+)?", text or "")
+    if len(nums) < 2:
+        return None
+    lat, lon = float(nums[0]), float(nums[1])
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return lat, lon
 
 
 def get_complaint_status(complaint_id):
@@ -135,13 +136,7 @@ def get_complaint_status(complaint_id):
         return "error"
 
 
-st.markdown(
-    "<div class='gcc-header'>"
-    "<h1>GCC Citizen Portal</h1>"
-    "<h3>Public Grievance &amp; Road Complaint System</h3>"
-    "</div>",
-    unsafe_allow_html=True,
-)
+render_header("citizen")
 
 mode = st.radio(
     "Choose an action",
@@ -152,7 +147,7 @@ mode = st.radio(
 
 if mode == "Check complaint status":
     st.markdown("**Reference Number**")
-    lookup_id = st.text_input("Reference Number", placeholder="e.g. CMP_000123", label_visibility="collapsed")
+    lookup_id = st.text_input("Reference Number", placeholder="e.g. CMP_KDV_049", label_visibility="collapsed")
     if st.button("Check Status"):
         if not lookup_id.strip():
             st.warning("Please enter a reference number.")
@@ -163,10 +158,7 @@ if mode == "Check complaint status":
             elif result == "error":
                 st.error("Could not reach the server. Please try again.")
             else:
-                st.success(f"Status: **{result['status']}**")
-                st.write(f"**Issue type:** {result['damage_type_label']}")
-                st.write(f"**Area:** {result['location_description']}")
-                st.write(f"**Reported on:** {result['complaint_date']}")
+                render_status_result(result)
                 if result["status"] == "Resolved":
                     st.write(f"**Resolved on:** {result['resolution_date'] or 'Not recorded'}")
                     if result["resolution_type"]:
@@ -174,85 +166,101 @@ if mode == "Check complaint status":
     render_footer()
     st.stop()
 
-if "citizen_submitted_id" in st.session_state:
-    st.success(
-        f"Thank you. Your complaint has been recorded with reference number "
-        f"**{st.session_state['citizen_submitted_id']}**."
-    )
-    st.info("You can use this reference number to follow up on the status of your complaint.")
+if "citizen_submitted" in st.session_state:
+    done = st.session_state["citizen_submitted"]
+    render_receipt(done)
+    nearby = done.get("nearby_reports") or []
+    if nearby:
+        ids = ", ".join(n["complaint_id"] for n in nearby[:5])
+        st.caption(
+            f"{len(nearby)} other report(s) were already within 30 m of this spot ({ids}). "
+            "Yours has been added to the same hotspot so officers can see how many people are affected."
+        )
     if st.button("Submit another complaint"):
-        del st.session_state["citizen_submitted_id"]
+        del st.session_state["citizen_submitted"]
         st.rerun()
     render_footer()
     st.stop()
 
 st.write(
     "Use this form to report potholes, damaged footpaths, waterlogging, broken "
-    "streetlights, and other road-related issues in your area."
+    "streetlights, and other road-related issues in Kandanchavadi."
 )
 
-location_options = get_locations()
+roads = get_locations()
+road_options = roads + [OTHER_ROAD]
 damage_type_labels = get_damage_type_labels()
 
-@st.cache_data(ttl=300)
-def _fetch_location_coordinates(area):
-    r = requests.get(f"{API_URL}/location-coordinates", params={"area": area}, timeout=5)
-    r.raise_for_status()
-    data = r.json()
-    return data["latitude"], data["longitude"]
+section_heading(1, "Complaint location")
+st.markdown("**Road / Street**")
+road = st.selectbox("Road / Street", options=road_options, label_visibility="collapsed")
 
+default_coords = get_location_coordinates(road if road != OTHER_ROAD else "")
+default_text = f"{default_coords[0]:.6f}, {default_coords[1]:.6f}" if default_coords else ""
 
-def get_location_coordinates(area):
-    try:
-        return _fetch_location_coordinates(area)
-    except Exception:
-        return None
+st.markdown("**Exact location**")
+st.caption(
+    "Open Google Maps, press and hold on the spot, and paste the coordinates here (for example 12.964500, 80.244900). "
+    "You can also click the map below to read off coordinates. The location must be inside Kandanchavadi."
+)
+coords_text = st.text_input("Latitude, longitude", value=default_text, key=f"coords_{road}", label_visibility="collapsed")
+coords = parse_coordinates(coords_text)
+chosen_lat, chosen_lon = (coords if coords else (None, None))
 
+pin = None
+if coords:
+    check = check_location(chosen_lat, chosen_lon)
+    if check is None:
+        st.warning("Could not check the location right now.")
+    elif check["inside"]:
+        note = "inside Kandanchavadi"
+        if not check["strictly_inside"]:
+            note += " (on a border road)"
+        st.success(f"This spot is {note}.")
+        if check["nearby_reports"]:
+            st.info(
+                f"{len(check['nearby_reports'])} report(s) already exist within 30 m of this spot. "
+                "You can still submit yours; it will be linked to the same hotspot."
+            )
+        pin = {"lat": chosen_lat, "lon": chosen_lon, "label": "Your location"}
+    else:
+        st.error(
+            f"This spot is outside Kandanchavadi (about {check['distance_to_boundary_m']:.0f} m from the boundary). "
+            "Please choose a spot inside the area."
+        )
+        pin = {"lat": chosen_lat, "lon": chosen_lon, "label": "Outside area"}
+elif coords_text.strip():
+    st.error("Could not read those coordinates. Use the form 12.964500, 80.244900.")
 
-@st.cache_data(ttl=300)
-def _fetch_sub_locations(area):
-    r = requests.get(f"{API_URL}/sub-locations", params={"area": area}, timeout=5)
-    r.raise_for_status()
-    return r.json().get("sub_locations", {})
+public_map = get_public_map()
+if public_map:
+    components.html(
+        maplib.build_map_html(
+            boundary_geojson=public_map["boundary"],
+            complaints=[],  # citizen map is plain: boundary + own location only
+            photo_base_url="",
+            height_px=420,
+            pin=pin,
+            click_to_pick=True,
+            show_hotspot_rings=False,
+        ),
+        height=500,
+        scrolling=False,
+    )
+    st.caption("The red line is the Kandanchavadi boundary. Click the map to place your location.")
 
-
-def get_sub_locations(area):
-    try:
-        return _fetch_sub_locations(area)
-    except Exception:
-        return {}
-
-
-st.markdown("**Area / Locality**")
-area = st.selectbox("Area / Locality", options=location_options, label_visibility="collapsed")
-
-sub_locations = get_sub_locations(area)
-chosen_lat, chosen_lon = None, None
-
-if sub_locations:
-    st.caption(f"Your complaint area is {area}. Pick the exact spot for more precise reporting:")
-    spot_label = st.selectbox("Exact spot", options=list(sub_locations.keys()), label_visibility="collapsed")
-    chosen_lat = sub_locations[spot_label]["latitude"]
-    chosen_lon = sub_locations[spot_label]["longitude"]
-    st.map(pd.DataFrame([{"lat": chosen_lat, "lon": chosen_lon}]), latitude="lat", longitude="lon", size=30, zoom=15)
-else:
-    coords = get_location_coordinates(area)
-    if coords:
-        chosen_lat, chosen_lon = coords
-        st.caption(f"Your complaint area is {area}.")
-        st.map(pd.DataFrame([{"lat": chosen_lat, "lon": chosen_lon}]), latitude="lat", longitude="lon", size=40, zoom=13)
-
+section_heading(2, "Issue details & evidence")
 with st.form("complaint_form", clear_on_submit=False):
     landmark = st.text_input(
-        "Nearby landmark (optional)", placeholder="e.g. Opposite bus stop"
+        "Nearby landmark (optional)", placeholder="e.g. Opposite the temple"
     )
 
     damage_label = st.selectbox("What type of issue are you reporting?", options=damage_type_labels)
 
-    if damage_label and area:
-        predicted_days = get_predicted_resolution(area, damage_label)
+    if damage_label and road != OTHER_ROAD:
+        predicted_days, basis = get_predicted_resolution(road, damage_label)
         if predicted_days is not None:
-            st.caption(f"Similar issues in your area have historically taken about {predicted_days:.0f} days to resolve.")
+            render_resolution_estimate(predicted_days, basis)
 
     description = st.text_area(
         "Describe the issue",
@@ -289,7 +297,9 @@ with st.form("complaint_form", clear_on_submit=False):
     submitted = st.form_submit_button("Submit Complaint", use_container_width=True)
 
     if submitted:
-        if not description.strip() and not damage_label:
+        if chosen_lat is None:
+            st.error("Please enter a valid location (latitude, longitude) inside Kandanchavadi.")
+        elif not description.strip() and not damage_label:
             st.error("Please provide a short description of the issue.")
         else:
             full_description = description
@@ -301,22 +311,25 @@ with st.form("complaint_form", clear_on_submit=False):
                 files["photo"] = (photo.name, photo.getvalue(), photo.type)
 
             data = {
-                "location_description": area,
+                "location_description": road if road != OTHER_ROAD else "",
                 "damage_type_label": damage_label,
                 "description": full_description,
                 "severity_word": severity,
                 "traffic_blocking": str(traffic_blocking),
                 "safety_concern": str(safety_concern),
+                "latitude": chosen_lat,
+                "longitude": chosen_lon,
             }
-            if chosen_lat is not None and chosen_lon is not None:
-                data["latitude"] = chosen_lat
-                data["longitude"] = chosen_lon
 
             try:
                 r = requests.post(f"{API_URL}/complaints", data=data, files=files, timeout=45)
-                r.raise_for_status()
-                st.session_state["citizen_submitted_id"] = r.json()["complaint_id"]
-                st.rerun()
+                if r.status_code == 422:
+                    st.error(r.json().get("detail", "The complaint could not be accepted."))
+                else:
+                    r.raise_for_status()
+                    st.session_state["citizen_submitted"] = r.json()
+                    st.cache_data.clear()
+                    st.rerun()
             except Exception as e:
                 st.error(f"Could not submit your complaint. Please try again. ({e})")
 

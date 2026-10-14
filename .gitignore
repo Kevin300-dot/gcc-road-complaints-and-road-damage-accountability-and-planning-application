@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Orion
+uploads/*
+!uploads/.gitkeep
+photo_path/*
+!photo_path/.gitkeep
